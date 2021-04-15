@@ -1,0 +1,132 @@
+//www.elegoo.com
+//2017.12.12
+
+/************************
+Exercise the motor using
+the L293D chip
+************************/
+
+#define ENABLE 8
+#define DIRA 7
+#define DIRB 4
+#include <Wire.h>
+#include <DS3231.h>
+#include <LiquidCrystal.h>
+#include <TimerOne.h>
+
+DS3231 clock;
+RTCDateTime dt;
+LiquidCrystal lcd(5, 9, 10, 11, 12, 3);
+
+bool lcdwrite = true;
+bool direction = HIGH;
+const int button = 2;
+int buttonState;
+int speeds[4] = {0, 128, 192, 255};
+String throttle[4] = {"0", "50%", "75%", "Full"};
+int i = 1;
+
+
+
+
+void timerISR(){ 
+    lcdwrite = true;
+}
+
+void setup() {
+    cli();
+  TCCR1A = 0;// set entire TCCR1A register to 0
+  TCCR1B = 0;// same for TCCR1B
+  TCNT1  = 0;//initialize counter value to 0
+  // set compare match register for 1hz
+  OCR1A = 15624;
+  // turn on CTC mode
+  TCCR1B |= (1 << WGM12);
+  // Set CS10 and CS12 bits for 1024 prescaler
+  TCCR1B |= (1 << CS12) | (1 << CS10);  
+  // enable timer compare interrupt
+  TIMSK1 |= (1 << OCIE1A);
+  sei(); 
+  
+  //---set pin direction
+  pinMode(ENABLE,OUTPUT);
+  pinMode(DIRA,OUTPUT);
+  pinMode(DIRB,OUTPUT);
+  pinMode(button,INPUT_PULLUP);
+  digitalWrite(DIRA, !direction); //CC
+  digitalWrite(DIRB, direction);
+  attachInterrupt(digitalPinToInterrupt(button), changeDirection, FALLING);
+  Serial.begin(9600);
+
+  //clock
+  clock.begin();
+  clock.setDateTime(__DATE__, __TIME__);   
+
+    //lcd on 
+  lcd.begin(16, 2);
+ }
+ 
+ISR(TIMER1_COMPA_vect){ 
+  lcdwrite = true;
+}
+
+void changeDirection() {
+  direction = !direction;
+  i++;
+  if (i == 4){
+    i = 0;
+  }
+}
+ 
+void loop() {
+ 
+  if(lcdwrite){
+    lcd.clear();
+     
+    lcd.setCursor(0, 0);
+    dt = clock.getDateTime();
+    lcd.print(dt.month);
+    lcd.print('/');
+    lcd.print(dt.day);
+    lcd.print('/');
+    lcd.print(dt.year);
+    lcd.print(" ");
+    if(direction == HIGH){
+      lcd.print("C");
+    }
+    if(direction == LOW){
+      lcd.print("CC");
+    }
+    lcd.setCursor(0, 1);
+    lcd.print(dt.hour);
+    lcd.print(':');
+    lcd.print(dt.minute);
+    lcd.print(':');
+    lcd.print(dt.second);
+    lcd.print("  ");
+    lcd.print(throttle[i]);
+    lcdwrite = false;
+  }
+  
+  if (dt.second < 30){
+    fanon();
+  }
+  else if (dt.second >= 30){
+    fanoff();  
+  }
+    
+}
+
+void fanon(){
+  i = 1;
+  analogWrite(ENABLE,speeds[i]);
+  digitalWrite(DIRA, !direction); 
+  digitalWrite(DIRB, direction);
+}
+void fanoff(){
+  i = 0;
+  analogWrite(ENABLE,0);
+  digitalWrite(DIRA, !direction); 
+  digitalWrite(DIRB, direction);
+  
+}
